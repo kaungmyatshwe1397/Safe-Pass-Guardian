@@ -151,6 +151,18 @@ export default function App() {
     setChildren(children.filter(c => c.id !== id));
   };
 
+  const handleDisconnectDevice = (childId: string, deviceId: string) => {
+    setChildren(prev => prev.map(child => {
+      if (child.id === childId) {
+        return {
+          ...child,
+          devices: child.devices.filter(d => d.id !== deviceId)
+        };
+      }
+      return child;
+    }));
+  };
+
   const handleSelectChild = (id: string) => {
     setSelectedChildId(id);
     setView('child-detail');
@@ -189,6 +201,7 @@ export default function App() {
             logs={MOCK_LOGS[selectedChild.id] || []}
             onBack={() => setView('parent-dashboard')} 
             onToggleSetting={(setting) => handleToggleSetting(selectedChild.id, setting)}
+            onDisconnectDevice={(deviceId) => handleDisconnectDevice(selectedChild.id, deviceId)}
           />
         )}
 
@@ -326,12 +339,65 @@ function ParentDashboard({
   onLogout: () => void,
   key?: string
 }) {
+  const [qrChild, setQrChild] = useState<Child | null>(null);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }} 
-      className="flex flex-col min-h-screen bg-slate-50"
+      className="flex flex-col min-h-screen bg-slate-50 relative"
     >
+      {/* QR Code Modal */}
+      <AnimatePresence>
+        {qrChild && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => setQrChild(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-xs p-8 bg-white rounded-[2.5rem] shadow-2xl text-center"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-center w-16 h-16 bg-indigo-50 rounded-2xl mx-auto mb-6">
+                <QrCode className="text-indigo-600" size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">{qrChild.name}'s Connection QR</h3>
+              <p className="text-xs text-slate-500 mb-8 leading-relaxed">
+                Scan this code on the child's device to link it to your account.
+              </p>
+              
+              <div className="p-4 bg-slate-50 rounded-3xl border border-slate-100 mb-8">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrChild.token}`}
+                  alt="QR Code"
+                  className="w-full aspect-square rounded-xl"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              
+              <div className="flex flex-col gap-3">
+                <div className="py-3 px-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 block mb-1">Manual Token</span>
+                  <span className="text-lg font-black text-indigo-600 tracking-[0.2em]">{qrChild.token}</span>
+                </div>
+                <button 
+                  onClick={() => setQrChild(null)}
+                  className="w-full py-4 text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="p-6 bg-white border-b border-slate-100">
         <div className="flex items-center justify-between mb-6">
@@ -396,6 +462,15 @@ function ParentDashboard({
 
                 <div className="flex items-center gap-2">
                   <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQrChild(child);
+                    }}
+                    className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"
+                  >
+                    <QrCode size={18} />
+                  </button>
+                  <button 
                     onClick={(e) => onDeleteChild(child.id, e)}
                     className="p-2 text-slate-300 hover:text-red-500 transition-colors"
                   >
@@ -455,7 +530,20 @@ function ParentDashboard({
   );
 }
 
-function ChildDetail({ child, logs, onBack, onToggleSetting }: { child: Child, logs: LogEntry[], onBack: () => void, onToggleSetting: (setting: keyof Child['settings']) => void, key?: string }) {
+function ChildDetail({ 
+  child, 
+  logs, 
+  onBack, 
+  onToggleSetting,
+  onDisconnectDevice
+}: { 
+  child: Child, 
+  logs: LogEntry[], 
+  onBack: () => void, 
+  onToggleSetting: (setting: keyof Child['settings']) => void,
+  onDisconnectDevice: (deviceId: string) => void,
+  key?: string 
+}) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }} 
@@ -489,6 +577,38 @@ function ChildDetail({ child, logs, onBack, onToggleSetting }: { child: Child, l
       </header>
 
       <main className="flex-1 p-6 space-y-8 overflow-y-auto">
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">Connected Devices</h3>
+            <Smartphone size={16} className="text-slate-300" />
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {child.devices.map(device => (
+              <div key={device.id} className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl shadow-sm shadow-slate-100/50 min-w-[140px]">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-8 h-8 bg-white rounded-xl border border-slate-100">
+                    {device.type === 'mobile' && <Smartphone size={16} className="text-indigo-600" />}
+                    {device.type === 'tablet' && <Tablet size={16} className="text-indigo-600" />}
+                    {device.type === 'laptop' && <Laptop size={16} className="text-indigo-600" />}
+                  </div>
+                  <span className="text-xs font-bold text-slate-700">{device.name}</span>
+                </div>
+                <button 
+                  onClick={() => onDisconnectDevice(device.id)}
+                  className="w-full py-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-white border border-indigo-100 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"
+                >
+                  Disconnect
+                </button>
+              </div>
+            ))}
+            {child.devices.length === 0 && (
+              <div className="w-full p-4 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-center">
+                <p className="text-xs font-medium text-slate-400 italic">No devices currently linked</p>
+              </div>
+            )}
+          </div>
+        </section>
+
         <section>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">Recent Activity</h3>
@@ -573,14 +693,141 @@ function SettingToggle({ label, description, active = false, onToggle }: { label
 
 function ChildAuth({ onBack, onSuccess }: { onBack: () => void, onSuccess: () => void, key?: string }) {
   const [token, setToken] = useState('1234');
+  const [isScanning, setIsScanning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
+
+  const startScanning = async () => {
+    try {
+      setError(null);
+      setIsScanning(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      
+      // Simulate scanning success after 3 seconds
+      setTimeout(() => {
+        if (streamRef.current) {
+          setToken('8829'); // Simulate a scanned token
+          stopScanning();
+        }
+      }, 3000);
+    } catch (err: any) {
+      console.error("Error accessing camera:", err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError("Camera permission denied. Please allow camera access in your browser settings.");
+      } else {
+        setError("Could not access camera. Please ensure it's not being used by another app.");
+      }
+      // Don't close scanning immediately so user can see the error
+    }
+  };
+
+  const simulateScan = () => {
+    setToken('8829');
+    stopScanning();
+  };
+
+  const stopScanning = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsScanning(false);
+    setError(null);
+  };
+
+  useEffect(() => {
+    return () => stopScanning();
+  }, []);
 
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }} 
       animate={{ opacity: 1, y: 0 }} 
       exit={{ opacity: 0, y: -20 }}
-      className="flex flex-col min-h-screen p-6 bg-white"
+      className="flex flex-col min-h-screen p-6 bg-white relative overflow-hidden"
     >
+      <AnimatePresence>
+        {isScanning && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black flex flex-col"
+          >
+            <div className="relative flex-1">
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                className="w-full h-full object-cover"
+              />
+              
+              {/* Scanner Overlay */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-64 h-64 border-2 border-emerald-500 rounded-3xl relative">
+                  <motion.div 
+                    animate={{ top: ['0%', '100%', '0%'] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    className="absolute left-0 right-0 h-0.5 bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.8)]"
+                  />
+                </div>
+              </div>
+
+              <button 
+                onClick={stopScanning}
+                className="absolute top-8 left-8 p-3 bg-white/20 backdrop-blur-md text-white rounded-2xl hover:bg-white/30 transition-all"
+              >
+                <ArrowLeft size={24} />
+              </button>
+
+              {error ? (
+                <div className="absolute inset-0 flex items-center justify-center p-8 text-center bg-slate-900/90 backdrop-blur-sm">
+                  <div className="max-w-xs">
+                    <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                      <Shield className="text-red-500" size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">Camera Blocked</h3>
+                    <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+                      {error}
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      <button 
+                        onClick={startScanning}
+                        className="w-full py-4 bg-white text-slate-900 font-bold rounded-2xl hover:bg-slate-100 transition-all"
+                      >
+                        Try Again
+                      </button>
+                      <button 
+                        onClick={simulateScan}
+                        className="w-full py-4 bg-white/10 text-white font-bold rounded-2xl hover:bg-white/20 transition-all"
+                      >
+                        Simulate Scan (Demo)
+                      </button>
+                      <button 
+                        onClick={stopScanning}
+                        className="w-full py-4 text-slate-500 font-bold hover:text-white transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="absolute bottom-12 left-0 right-0 text-center px-8">
+                  <p className="text-white text-sm font-bold tracking-wide mb-2">Align QR Code within the frame</p>
+                  <p className="text-white/60 text-xs">Scanning will happen automatically</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <button onClick={onBack} className="flex items-center gap-2 mb-12 text-slate-500 hover:text-emerald-600 transition-colors">
         <ArrowLeft size={20} />
         <span className="font-medium">Back</span>
@@ -610,10 +857,13 @@ function ChildAuth({ onBack, onSuccess }: { onBack: () => void, onSuccess: () =>
             Connect to Guardian
           </button>
 
-          <div className="flex items-center justify-center gap-2 pt-4 text-slate-300">
+          <button 
+            onClick={startScanning}
+            className="flex items-center justify-center gap-2 pt-4 text-slate-400 hover:text-emerald-600 transition-colors w-full"
+          >
             <QrCode size={20} />
             <span className="text-xs font-bold uppercase tracking-widest">Scan QR Code</span>
-          </div>
+          </button>
         </div>
       </div>
     </motion.div>

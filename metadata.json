@@ -1,5 +1,5 @@
 {
   "name": "SafeGuard Guardian",
   "description": "A clean, trustworthy parental control app with Parent and Child modes for safe digital exploration.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["camera"]
 }
